@@ -22,21 +22,20 @@ export default function CalendarPage() {
     const [isEditMode, setIsEditMode] = useState(false);
 
     useEffect(() => {
+        const fetchEvents = async () => {
+            try {
+                const month = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+                const res = await fetch(`/api/calendar?month=${month}`);
+                const data = await res.json();
+                setEvents(data.events || []);
+            } catch (error) {
+                console.error('Failed to fetch events:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
         fetchEvents();
     }, [currentDate]);
-
-    const fetchEvents = async () => {
-        try {
-            const month = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-            const res = await fetch(`/api/calendar?month=${month}`);
-            const data = await res.json();
-            setEvents(data.events || []);
-        } catch (error) {
-            console.error('Failed to fetch events:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const getDaysInMonth = (date) => {
         const year = date.getFullYear();

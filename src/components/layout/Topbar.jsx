@@ -9,20 +9,19 @@ export default function Topbar() {
     const [showDropdown, setShowDropdown] = useState(false);
 
     useEffect(() => {
+        const fetchSession = async () => {
+            try {
+                const res = await fetch('/api/auth/session');
+                if (res.ok) {
+                    const data = await res.json();
+                    setUser(data.user);
+                }
+            } catch (error) {
+                console.error('Failed to fetch session:', error);
+            }
+        };
         fetchSession();
     }, []);
-
-    const fetchSession = async () => {
-        try {
-            const res = await fetch('/api/auth/session');
-            if (res.ok) {
-                const data = await res.json();
-                setUser(data.user);
-            }
-        } catch (error) {
-            console.error('Failed to fetch session:', error);
-        }
-    };
 
     const handleLogout = async () => {
         try {
