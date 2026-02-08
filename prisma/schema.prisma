@@ -1,0 +1,132 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgres"
+  url      = env("DATABASE_URL")
+}
+
+
+// Admin user for authentication only
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations for tracking who created entries
+  createdOrders       Order[]            @relation("OrderCreator")
+  createdTransactions MoneyTransaction[] @relation("TransactionCreator")
+  createdTodos        Todo[]             @relation("TodoCreator")
+  createdEvents       CalendarEvent[]    @relation("EventCreator")
+  createdLinks        CompanyLink[]      @relation("LinkCreator")
+}
+
+// Company with total balance
+model Company {
+  id           String   @id @default(cuid())
+  name         String
+  balance      Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employees    Employee[]
+  transactions MoneyTransaction[]
+  orders       Order[]
+  links        CompanyLink[]
+}
+
+// Employees belong to company
+model Employee {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  position  String?
+  companyId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company       Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedTodos Todo[]
+}
+
+// Company money transactions (credit/debit)
+model MoneyTransaction {
+  id          String   @id @default(cuid())
+  amount      Float
+  type        String   // "credit" or "debit"
+  description String?
+  companyId   String
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("TransactionCreator", fields: [createdById], references: [id])
+}
+
+model Order {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("active") // active, on_hold, in_meeting, completed
+  companyId   String
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("OrderCreator", fields: [createdById], references: [id])
+}
+
+model Todo {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("pending") // pending, in_progress, completed
+  priority    String   @default("medium") // low, medium, high
+  assigneeId  String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignee  Employee? @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy User?     @relation("TodoCreator", fields: [createdById], references: [id])
+}
+
+// Calendar events/notes
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  date        DateTime
+  color       String   @default("#3b82f6")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User? @relation("EventCreator", fields: [createdById], references: [id])
+}
+
+// Company links and resources
+model CompanyLink {
+  id          String   @id @default(cuid())
+  companyId   String
+  title       String
+  url         String
+  category    String   @default("other") // website, social, document, other
+  notes       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("LinkCreator", fields: [createdById], references: [id])
+}
