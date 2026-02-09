@@ -39,7 +39,7 @@ export async function POST(request) {
     try {
         const session = await requireAuth();
 
-        const { title, description, status = 'active', companyId } = await request.json();
+        const { title, description, status = 'active', companyId, amount, orderNumber } = await request.json();
 
         if (!title || !companyId) {
             return errorResponse('Title and company are required', 400);
@@ -59,14 +59,22 @@ export async function POST(request) {
             return errorResponse('Company not found', 404);
         }
 
+        const orderData = {
+            title,
+            description,
+            status,
+            companyId,
+            createdById: session.id,
+        };
+
+        // Add optional fields if provided
+        if (orderNumber) orderData.orderNumber = orderNumber;
+        if (amount !== undefined && amount !== null && amount !== '') {
+            orderData.amount = parseFloat(amount);
+        }
+
         const order = await prisma.order.create({
-            data: {
-                title,
-                description,
-                status,
-                companyId,
-                createdById: session.id,
-            },
+            data: orderData,
             include: {
                 company: {
                     select: { id: true, name: true },

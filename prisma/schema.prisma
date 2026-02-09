@@ -27,6 +27,7 @@ model User {
   createdTodos        Todo[]             @relation("TodoCreator")
   createdEvents       CalendarEvent[]    @relation("EventCreator")
   createdLinks        CompanyLink[]      @relation("LinkCreator")
+  createdNotes        Note[]             @relation("NoteCreator")
 }
 
 // Company with total balance
@@ -64,9 +65,11 @@ model MoneyTransaction {
   amount      Float
   type        String   // "credit" or "debit"
   description String?
+  orderNumber String?  // Optional order number reference
   companyId   String
   createdById String?
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
 
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdBy User?   @relation("TransactionCreator", fields: [createdById], references: [id])
@@ -76,6 +79,8 @@ model Order {
   id          String   @id @default(cuid())
   title       String
   description String?
+  orderNumber String?  // Optional order number/reference
+  amount      Float?   // Optional order amount (read-only display)
   status      String   @default("active") // active, on_hold, in_meeting, completed
   companyId   String
   createdById String?
@@ -129,4 +134,18 @@ model CompanyLink {
 
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdBy User?   @relation("LinkCreator", fields: [createdById], references: [id])
+}
+
+// Notes - visible to all admins
+model Note {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   @db.Text
+  color       String   @default("indigo") // indigo, rose, emerald, amber, sky, violet
+  isPinned    Boolean  @default(false)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User? @relation("NoteCreator", fields: [createdById], references: [id])
 }

@@ -28,7 +28,8 @@ export default function OrdersPage() {
     const [companies, setCompanies] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
-    const [formData, setFormData] = useState({ title: '', description: '', status: 'active', companyId: '' });
+    const [editingOrder, setEditingOrder] = useState(null);
+    const [formData, setFormData] = useState({ title: '', description: '', status: 'active', companyId: '', amount: '', orderNumber: '' });
     const [error, setError] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
 
@@ -60,8 +61,11 @@ export default function OrdersPage() {
         setError('');
 
         try {
-            const res = await fetch('/api/orders', {
-                method: 'POST',
+            const url = editingOrder ? `/api/orders/${editingOrder.id}` : '/api/orders';
+            const method = editingOrder ? 'PUT' : 'POST';
+
+            const res = await fetch(url, {
+                method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
             });
@@ -69,12 +73,16 @@ export default function OrdersPage() {
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.error || 'Failed to create order');
+                throw new Error(data.error || 'Failed to save order');
             }
 
-            setOrders([data.order, ...orders]);
-            setShowModal(false);
-            setFormData({ title: '', description: '', status: 'active', companyId: '' });
+            if (editingOrder) {
+                setOrders(orders.map(o => o.id === editingOrder.id ? data.order : o));
+            } else {
+                setOrders([data.order, ...orders]);
+            }
+
+            handleCloseModal();
         } catch (err) {
             setError(err.message);
         }
@@ -100,6 +108,26 @@ export default function OrdersPage() {
         }
     };
 
+    const handleEdit = (order) => {
+        setEditingOrder(order);
+        setFormData({
+            title: order.title,
+            description: order.description || '',
+            status: order.status,
+            companyId: order.companyId,
+            amount: order.amount || '',
+            orderNumber: order.orderNumber || '',
+        });
+        setShowModal(true);
+    };
+
+    const handleCloseModal = () => {
+        setShowModal(false);
+        setEditingOrder(null);
+        setFormData({ title: '', description: '', status: 'active', companyId: '', amount: '', orderNumber: '' });
+        setError('');
+    };
+
     const handleDelete = async (id) => {
         if (!confirm('Are you sure you want to delete this order?')) return;
 
@@ -121,6 +149,9 @@ export default function OrdersPage() {
         in_meeting: orders.filter(o => o.status === 'in_meeting').length,
         completed: orders.filter(o => o.status === 'completed').length,
     };
+
+    // Calculate total amount
+    const totalAmount = orders.reduce((sum, o) => sum + (o.amount || 0), 0);
 
     if (loading) {
         return (
@@ -144,6 +175,30 @@ export default function OrdersPage() {
                     </svg>
                     Create Order
                 </Button>
+            </div>
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl p-4 text-white shadow-lg">
+                    <p className="text-orange-100 text-xs font-medium">Total Orders</p>
+                    <p className="text-2xl font-bold mt-1">{orders.length}</p>
+                </div>
+                <div className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl p-4 text-white shadow-lg">
+                    <p className="text-green-100 text-xs font-medium">Total Amount</p>
+                    <p className="text-2xl font-bold mt-1">₹{totalAmount.toLocaleString('en-IN')}</p>
+                </div>
+                <div className="bg-white rounded-xl p-4 border-2 border-green-200 shadow-sm">
+                    <p className="text-slate-500 text-xs font-medium">Active</p>
+                    <p className="text-2xl font-bold text-green-600 mt-1">{orderCounts.active}</p>
+                </div>
+                <div className="bg-white rounded-xl p-4 border-2 border-yellow-200 shadow-sm">
+                    <p className="text-slate-500 text-xs font-medium">On Hold</p>
+                    <p className="text-2xl font-bold text-yellow-600 mt-1">{orderCounts.on_hold}</p>
+                </div>
+                <div className="bg-white rounded-xl p-4 border-2 border-slate-200 shadow-sm">
+                    <p className="text-slate-500 text-xs font-medium">Completed</p>
+                    <p className="text-2xl font-bold text-slate-600 mt-1">{orderCounts.completed}</p>
+                </div>
             </div>
 
             {/* Status Filter Tabs */}
@@ -177,8 +232,10 @@ export default function OrdersPage() {
                     <table className="w-full">
                         <thead>
                             <tr className="border-b border-slate-200">
+                                <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Order #</th>
                                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Title</th>
                                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Company</th>
+                                <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Amount</th>
                                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Status</th>
                                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Change Status</th>
                                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Created By</th>
@@ -190,6 +247,15 @@ export default function OrdersPage() {
                             {filteredOrders.map((order) => (
                                 <tr key={order.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                                     <td className="py-4 px-4">
+                                        {order.orderNumber ? (
+                                            <span className="text-sm font-mono bg-slate-100 px-2 py-1 rounded text-slate-700">
+                                                {order.orderNumber}
+                                            </span>
+                                        ) : (
+                                            <span className="text-sm text-slate-400">-</span>
+                                        )}
+                                    </td>
+                                    <td className="py-4 px-4">
                                         <div>
                                             <p className="font-medium text-slate-900">{order.title}</p>
                                             {order.description && (
@@ -199,6 +265,15 @@ export default function OrdersPage() {
                                     </td>
                                     <td className="py-4 px-4">
                                         <span className="text-sm text-slate-600">{order.company?.name || '-'}</span>
+                                    </td>
+                                    <td className="py-4 px-4">
+                                        {order.amount ? (
+                                            <span className="text-sm font-semibold text-green-600">
+                                                ₹{order.amount.toLocaleString('en-IN')}
+                                            </span>
+                                        ) : (
+                                            <span className="text-sm text-slate-400">-</span>
+                                        )}
                                     </td>
                                     <td className="py-4 px-4">
                                         <StatusBadge status={order.status} type="order" />
@@ -244,15 +319,26 @@ export default function OrdersPage() {
                                         </span>
                                     </td>
                                     <td className="py-4 px-4 text-right">
-                                        <button
-                                            onClick={() => handleDelete(order.id)}
-                                            className="p-2 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
-                                            title="Delete order"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                            </svg>
-                                        </button>
+                                        <div className="flex items-center justify-end gap-1">
+                                            <button
+                                                onClick={() => handleEdit(order)}
+                                                className="p-2 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"
+                                                title="Edit order"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                </svg>
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(order.id)}
+                                                className="p-2 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                                                title="Delete order"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                </svg>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -277,8 +363,8 @@ export default function OrdersPage() {
                 </div>
             </Card>
 
-            {/* Create Order Modal */}
-            <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Create New Order">
+            {/* Create/Edit Order Modal */}
+            <Modal isOpen={showModal} onClose={handleCloseModal} title={editingOrder ? 'Edit Order' : 'Create New Order'}>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     {error && (
                         <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -286,13 +372,22 @@ export default function OrdersPage() {
                         </div>
                     )}
 
-                    <Input
-                        label="Order Title"
-                        value={formData.title}
-                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                        placeholder="Enter order title"
-                        required
-                    />
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input
+                            label="Order Title"
+                            value={formData.title}
+                            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                            placeholder="Enter order title"
+                            required
+                        />
+
+                        <Input
+                            label="Order Number (Optional)"
+                            value={formData.orderNumber}
+                            onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
+                            placeholder="e.g., ORD-001"
+                        />
+                    </div>
 
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -309,13 +404,6 @@ export default function OrdersPage() {
 
                     <div className="grid grid-cols-2 gap-4">
                         <Select
-                            label="Status"
-                            value={formData.status}
-                            onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                            options={ORDER_STATUSES}
-                        />
-
-                        <Select
                             label="Company"
                             value={formData.companyId}
                             onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
@@ -325,14 +413,43 @@ export default function OrdersPage() {
                             ]}
                             required
                         />
+
+                        <Select
+                            label="Status"
+                            value={formData.status}
+                            onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                            options={ORDER_STATUSES}
+                        />
+                    </div>
+
+                    {/* Amount Field */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Order Amount (Optional)
+                        </label>
+                        <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
+                            <input
+                                type="number"
+                                value={formData.amount}
+                                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                                className="w-full rounded-xl border-2 border-slate-200 bg-white pl-8 pr-4 py-3 text-sm text-slate-900 placeholder-slate-400 transition-all duration-200 hover:border-blue-300 hover:shadow-md focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:shadow-lg"
+                                placeholder="0.00"
+                                step="0.01"
+                                min="0"
+                            />
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                            This is for reference only and doesn&apos;t affect company balance
+                        </p>
                     </div>
 
                     <div className="flex gap-3 pt-4">
-                        <Button type="button" variant="secondary" onClick={() => setShowModal(false)} className="flex-1">
+                        <Button type="button" variant="secondary" onClick={handleCloseModal} className="flex-1">
                             Cancel
                         </Button>
                         <Button type="submit" className="flex-1">
-                            Create Order
+                            {editingOrder ? 'Save Changes' : 'Create Order'}
                         </Button>
                     </div>
                 </form>

@@ -32,7 +32,7 @@ export async function PUT(request, { params }) {
         await requireAuth();
 
         const { id } = await params;
-        const { title, description, status } = await request.json();
+        const { title, description, status, amount, companyId, orderNumber } = await request.json();
 
         const validStatuses = ['active', 'on_hold', 'in_meeting', 'completed'];
 
@@ -44,12 +44,22 @@ export async function PUT(request, { params }) {
         if (title !== undefined) updateData.title = title;
         if (description !== undefined) updateData.description = description;
         if (status !== undefined) updateData.status = status;
+        if (companyId !== undefined) updateData.companyId = companyId;
+        if (orderNumber !== undefined) updateData.orderNumber = orderNumber;
+
+        // Handle amount - can be set to null to clear it
+        if (amount !== undefined) {
+            updateData.amount = amount === '' || amount === null ? null : parseFloat(amount);
+        }
 
         const order = await prisma.order.update({
             where: { id },
             data: updateData,
             include: {
                 company: {
+                    select: { id: true, name: true },
+                },
+                createdBy: {
                     select: { id: true, name: true },
                 },
             },

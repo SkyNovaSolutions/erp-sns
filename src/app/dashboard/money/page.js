@@ -6,14 +6,14 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import Modal from '@/components/ui/Modal';
-import StatusBadge from '@/components/ui/StatusBadge';
 
 export default function MoneyPage() {
     const [transactions, setTransactions] = useState([]);
     const [companies, setCompanies] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
-    const [formData, setFormData] = useState({ amount: '', type: 'credit', description: '', companyId: '' });
+    const [editingTransaction, setEditingTransaction] = useState(null);
+    const [formData, setFormData] = useState({ amount: '', type: 'credit', description: '', companyId: '', orderNumber: '' });
     const [error, setError] = useState('');
     const [filterCompany, setFilterCompany] = useState('');
 
@@ -45,33 +45,73 @@ export default function MoneyPage() {
         setError('');
 
         try {
-            const res = await fetch('/api/transactions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    ...formData,
-                    amount: parseFloat(formData.amount),
-                }),
-            });
+            if (editingTransaction) {
+                // Update transaction (only description, orderNumber - NOT amount)
+                const res = await fetch(`/api/transactions/${editingTransaction.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        description: formData.description,
+                        orderNumber: formData.orderNumber,
+                    }),
+                });
 
-            const data = await res.json();
+                const data = await res.json();
 
-            if (!res.ok) {
-                throw new Error(data.error || 'Failed to create transaction');
+                if (!res.ok) {
+                    throw new Error(data.error || 'Failed to update transaction');
+                }
+
+                setTransactions(transactions.map(t => t.id === editingTransaction.id ? data.transaction : t));
+            } else {
+                // Create new transaction
+                const res = await fetch('/api/transactions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...formData,
+                        amount: parseFloat(formData.amount),
+                    }),
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Failed to create transaction');
+                }
+
+                setTransactions([data.transaction, ...transactions]);
+                // Update company balance in local state
+                setCompanies(companies.map(c =>
+                    c.id === formData.companyId
+                        ? { ...c, balance: data.newBalance }
+                        : c
+                ));
             }
 
-            setTransactions([data.transaction, ...transactions]);
-            // Update company balance in local state
-            setCompanies(companies.map(c =>
-                c.id === formData.companyId
-                    ? { ...c, balance: data.newBalance }
-                    : c
-            ));
-            setShowModal(false);
-            setFormData({ amount: '', type: 'credit', description: '', companyId: '' });
+            handleCloseModal();
         } catch (err) {
             setError(err.message);
         }
+    };
+
+    const handleEdit = (transaction) => {
+        setEditingTransaction(transaction);
+        setFormData({
+            amount: transaction.amount,
+            type: transaction.type,
+            description: transaction.description || '',
+            companyId: transaction.companyId,
+            orderNumber: transaction.orderNumber || '',
+        });
+        setShowModal(true);
+    };
+
+    const handleCloseModal = () => {
+        setShowModal(false);
+        setEditingTransaction(null);
+        setFormData({ amount: '', type: 'credit', description: '', companyId: '', orderNumber: '' });
+        setError('');
     };
 
     const filteredTransactions = filterCompany
@@ -146,10 +186,12 @@ export default function MoneyPage() {
                             <tr className="border-b border-slate-200">
                                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Type</th>
                                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Description</th>
+                                <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Order #</th>
                                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Company</th>
                                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Created By</th>
                                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Date</th>
                                 <th className="text-right py-3 px-4 text-sm font-semibold text-slate-600">Amount</th>
+                                <th className="text-right py-3 px-4 text-sm font-semibold text-slate-600">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -177,6 +219,15 @@ export default function MoneyPage() {
                                         </p>
                                     </td>
                                     <td className="py-4 px-4">
+                                        {transaction.orderNumber ? (
+                                            <span className="text-sm font-mono bg-slate-100 px-2 py-1 rounded text-slate-700">
+                                                {transaction.orderNumber}
+                                            </span>
+                                        ) : (
+                                            <span className="text-sm text-slate-400">-</span>
+                                        )}
+                                    </td>
+                                    <td className="py-4 px-4">
                                         <span className="text-sm text-slate-600">{transaction.company?.name || '-'}</span>
                                     </td>
                                     <td className="py-4 px-4">
@@ -202,6 +253,17 @@ export default function MoneyPage() {
                                             {transaction.type === 'credit' ? '+' : '-'}₹{transaction.amount.toLocaleString('en-IN')}
                                         </span>
                                     </td>
+                                    <td className="py-4 px-4 text-right">
+                                        <button
+                                            onClick={() => handleEdit(transaction)}
+                                            className="p-2 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"
+                                            title="Edit transaction"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                            </svg>
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -221,8 +283,8 @@ export default function MoneyPage() {
                 </div>
             </Card>
 
-            {/* Add Transaction Modal */}
-            <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="New Transaction">
+            {/* Add/Edit Transaction Modal */}
+            <Modal isOpen={showModal} onClose={handleCloseModal} title={editingTransaction ? 'Edit Transaction' : 'New Transaction'}>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     {error && (
                         <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -230,53 +292,92 @@ export default function MoneyPage() {
                         </div>
                     )}
 
-                    <Select
-                        label="Company"
-                        value={formData.companyId}
-                        onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
-                        options={[
-                            { value: '', label: 'Select a company' },
-                            ...companies.map((c) => ({ value: c.id, label: `${c.name} (₹${c.balance.toLocaleString('en-IN')})` })),
-                        ]}
-                        required
-                    />
+                    {editingTransaction ? (
+                        <>
+                            {/* Edit mode - only show editable fields */}
+                            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                                <p className="text-sm text-slate-500 mb-1">Transaction Amount (Read-only)</p>
+                                <p className={`text-2xl font-bold ${editingTransaction.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
+                                    {editingTransaction.type === 'credit' ? '+' : '-'}₹{editingTransaction.amount.toLocaleString('en-IN')}
+                                </p>
+                                <p className="text-xs text-slate-400 mt-1">
+                                    Amount cannot be changed after creation
+                                </p>
+                            </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <Select
-                            label="Type"
-                            value={formData.type}
-                            onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                            options={[
-                                { value: 'credit', label: 'Credit (Add Money)' },
-                                { value: 'debit', label: 'Debit (Remove Money)' },
-                            ]}
-                        />
+                            <Input
+                                label="Description"
+                                value={formData.description}
+                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                placeholder="Payment for services, refund, etc."
+                            />
 
-                        <Input
-                            label="Amount"
-                            type="number"
-                            step="0.01"
-                            min="0.01"
-                            value={formData.amount}
-                            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                            placeholder="0.00"
-                            required
-                        />
-                    </div>
+                            <Input
+                                label="Order Number (Optional)"
+                                value={formData.orderNumber}
+                                onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
+                                placeholder="e.g., ORD-001"
+                            />
+                        </>
+                    ) : (
+                        <>
+                            {/* Create mode - show all fields */}
+                            <Select
+                                label="Company"
+                                value={formData.companyId}
+                                onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
+                                options={[
+                                    { value: '', label: 'Select a company' },
+                                    ...companies.map((c) => ({ value: c.id, label: `${c.name} (₹${c.balance.toLocaleString('en-IN')})` })),
+                                ]}
+                                required
+                            />
 
-                    <Input
-                        label="Description"
-                        value={formData.description}
-                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        placeholder="Payment for services, refund, etc."
-                    />
+                            <div className="grid grid-cols-2 gap-4">
+                                <Select
+                                    label="Type"
+                                    value={formData.type}
+                                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                                    options={[
+                                        { value: 'credit', label: 'Credit (Add Money)' },
+                                        { value: 'debit', label: 'Debit (Remove Money)' },
+                                    ]}
+                                />
+
+                                <Input
+                                    label="Amount"
+                                    type="number"
+                                    step="0.01"
+                                    min="0.01"
+                                    value={formData.amount}
+                                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                                    placeholder="0.00"
+                                    required
+                                />
+                            </div>
+
+                            <Input
+                                label="Description"
+                                value={formData.description}
+                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                placeholder="Payment for services, refund, etc."
+                            />
+
+                            <Input
+                                label="Order Number (Optional)"
+                                value={formData.orderNumber}
+                                onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
+                                placeholder="e.g., ORD-001"
+                            />
+                        </>
+                    )}
 
                     <div className="flex gap-3 pt-4">
-                        <Button type="button" variant="secondary" onClick={() => setShowModal(false)} className="flex-1">
+                        <Button type="button" variant="secondary" onClick={handleCloseModal} className="flex-1">
                             Cancel
                         </Button>
                         <Button type="submit" className="flex-1">
-                            Create Transaction
+                            {editingTransaction ? 'Save Changes' : 'Create Transaction'}
                         </Button>
                     </div>
                 </form>

@@ -39,7 +39,7 @@ export async function POST(request) {
     try {
         const session = await requireAuth();
 
-        const { amount, type, description, companyId } = await request.json();
+        const { amount, type, description, companyId, orderNumber } = await request.json();
 
         if (!amount || !type || !companyId) {
             return errorResponse('Amount, type and company are required', 400);
@@ -73,16 +73,21 @@ export async function POST(request) {
             return errorResponse('Insufficient balance for this transaction', 400);
         }
 
+        const transactionData = {
+            amount: parsedAmount,
+            type,
+            description,
+            companyId,
+            createdById: session.id,
+        };
+
+        // Add optional order number if provided
+        if (orderNumber) transactionData.orderNumber = orderNumber;
+
         // Create transaction and update balance in a transaction
         const [transaction] = await prisma.$transaction([
             prisma.moneyTransaction.create({
-                data: {
-                    amount: parsedAmount,
-                    type,
-                    description,
-                    companyId,
-                    createdById: session.id,
-                },
+                data: transactionData,
                 include: {
                     company: {
                         select: { id: true, name: true },
