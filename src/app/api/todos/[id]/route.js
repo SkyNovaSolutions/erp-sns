@@ -12,7 +12,19 @@ export async function GET(request, { params }) {
         const todo = await prisma.todo.findUnique({
             where: { id },
             include: {
-                assignee: true,
+                assignees: {
+                    include: {
+                        user: {
+                            select: { id: true, name: true, email: true },
+                        },
+                        employee: {
+                            select: { id: true, name: true, email: true },
+                        },
+                    },
+                },
+                createdBy: {
+                    select: { id: true, name: true },
+                },
             },
         });
 
@@ -32,7 +44,7 @@ export async function PUT(request, { params }) {
         await requireAuth();
 
         const { id } = await params;
-        const { title, description, status, assigneeId } = await request.json();
+        const { title, description, status, priority, assigneeIds } = await request.json();
 
         const validStatuses = ['pending', 'in_progress', 'completed'];
 
@@ -40,29 +52,74 @@ export async function PUT(request, { params }) {
             return errorResponse(`Status must be one of: ${validStatuses.join(', ')}`, 400);
         }
 
-        // Verify assignee exists if provided
-        if (assigneeId) {
-            const employee = await prisma.employee.findUnique({
-                where: { id: assigneeId },
-            });
-
-            if (!employee) {
-                return errorResponse('Assignee not found', 404);
-            }
-        }
-
         const updateData = {};
         if (title !== undefined) updateData.title = title;
         if (description !== undefined) updateData.description = description;
         if (status !== undefined) updateData.status = status;
-        if (assigneeId !== undefined) updateData.assigneeId = assigneeId;
+        if (priority !== undefined) updateData.priority = priority;
 
-        const todo = await prisma.todo.update({
+        // Update the todo
+        await prisma.todo.update({
             where: { id },
             data: updateData,
+        });
+
+        // If assigneeIds is provided, update assignees
+        if (assigneeIds !== undefined) {
+            // Remove all existing assignees
+            await prisma.todoAssignee.deleteMany({
+                where: { todoId: id },
+            });
+
+            // Add new assignees
+            if (assigneeIds && assigneeIds.length > 0) {
+                const assigneeData = [];
+
+                for (const assignee of assigneeIds) {
+                    if (assignee.type === 'user') {
+                        const user = await prisma.user.findUnique({ where: { id: assignee.id } });
+                        if (user) {
+                            assigneeData.push({
+                                todoId: id,
+                                userId: assignee.id,
+                            });
+                        }
+                    } else if (assignee.type === 'employee') {
+                        const employee = await prisma.employee.findUnique({ where: { id: assignee.id } });
+                        if (employee) {
+                            assigneeData.push({
+                                todoId: id,
+                                employeeId: assignee.id,
+                            });
+                        }
+                    }
+                }
+
+                if (assigneeData.length > 0) {
+                    await prisma.todoAssignee.createMany({
+                        data: assigneeData,
+                        skipDuplicates: true,
+                    });
+                }
+            }
+        }
+
+        // Fetch updated todo with assignees
+        const todo = await prisma.todo.findUnique({
+            where: { id },
             include: {
-                assignee: {
-                    select: { id: true, name: true, email: true },
+                assignees: {
+                    include: {
+                        user: {
+                            select: { id: true, name: true, email: true },
+                        },
+                        employee: {
+                            select: { id: true, name: true, email: true },
+                        },
+                    },
+                },
+                createdBy: {
+                    select: { id: true, name: true },
                 },
             },
         });

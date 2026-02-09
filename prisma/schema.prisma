@@ -28,6 +28,7 @@ model User {
   createdEvents       CalendarEvent[]    @relation("EventCreator")
   createdLinks        CompanyLink[]      @relation("LinkCreator")
   createdNotes        Note[]             @relation("NoteCreator")
+  assignedTodos       TodoAssignee[]     // Todos assigned to this admin user
 }
 
 // Company with total balance
@@ -55,8 +56,8 @@ model Employee {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company       Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  assignedTodos Todo[]
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedTodos TodoAssignee[] // Todos assigned to this employee
 }
 
 // Company money transactions (credit/debit)
@@ -97,13 +98,28 @@ model Todo {
   description String?
   status      String   @default("pending") // pending, in_progress, completed
   priority    String   @default("medium") // low, medium, high
-  assigneeId  String?
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  assignee  Employee? @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
-  createdBy User?     @relation("TodoCreator", fields: [createdById], references: [id])
+  createdBy User?          @relation("TodoCreator", fields: [createdById], references: [id])
+  assignees TodoAssignee[]
+}
+
+// Join table for Todo assignees - supports both Users and Employees
+model TodoAssignee {
+  id         String   @id @default(cuid())
+  todoId     String
+  userId     String?  // Admin user assignee
+  employeeId String?  // Employee assignee
+  assignedAt DateTime @default(now())
+
+  todo     Todo      @relation(fields: [todoId], references: [id], onDelete: Cascade)
+  user     User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([todoId, userId])
+  @@unique([todoId, employeeId])
 }
 
 // Calendar events/notes

@@ -8,18 +8,23 @@ export async function GET(request) {
         await requireAuth();
 
         const { searchParams } = new URL(request.url);
-        const assigneeId = searchParams.get('assigneeId');
         const status = searchParams.get('status');
 
         const where = {};
-        if (assigneeId) where.assigneeId = assigneeId;
         if (status) where.status = status;
 
         const todos = await prisma.todo.findMany({
             where,
             include: {
-                assignee: {
-                    select: { id: true, name: true, email: true },
+                assignees: {
+                    include: {
+                        user: {
+                            select: { id: true, name: true, email: true },
+                        },
+                        employee: {
+                            select: { id: true, name: true, email: true },
+                        },
+                    },
                 },
                 createdBy: {
                     select: { id: true, name: true },
@@ -39,7 +44,7 @@ export async function POST(request) {
     try {
         const session = await requireAuth();
 
-        const { title, description, status = 'pending', assigneeId } = await request.json();
+        const { title, description, status = 'pending', priority = 'medium', assigneeIds = [] } = await request.json();
 
         if (!title) {
             return errorResponse('Title is required', 400);
@@ -50,28 +55,65 @@ export async function POST(request) {
             return errorResponse(`Status must be one of: ${validStatuses.join(', ')}`, 400);
         }
 
-        // Verify assignee exists if provided
-        if (assigneeId) {
-            const employee = await prisma.employee.findUnique({
-                where: { id: assigneeId },
-            });
-
-            if (!employee) {
-                return errorResponse('Assignee not found', 404);
-            }
-        }
-
+        // Create the todo first
         const todo = await prisma.todo.create({
             data: {
                 title,
                 description,
                 status,
-                assigneeId,
+                priority,
                 createdById: session.id,
             },
+        });
+
+        // Add assignees if provided
+        if (assigneeIds && assigneeIds.length > 0) {
+            const assigneeData = [];
+
+            for (const assignee of assigneeIds) {
+                // assignee format: { type: 'user' | 'employee', id: string }
+                if (assignee.type === 'user') {
+                    // Verify user exists
+                    const user = await prisma.user.findUnique({ where: { id: assignee.id } });
+                    if (user) {
+                        assigneeData.push({
+                            todoId: todo.id,
+                            userId: assignee.id,
+                        });
+                    }
+                } else if (assignee.type === 'employee') {
+                    // Verify employee exists
+                    const employee = await prisma.employee.findUnique({ where: { id: assignee.id } });
+                    if (employee) {
+                        assigneeData.push({
+                            todoId: todo.id,
+                            employeeId: assignee.id,
+                        });
+                    }
+                }
+            }
+
+            if (assigneeData.length > 0) {
+                await prisma.todoAssignee.createMany({
+                    data: assigneeData,
+                    skipDuplicates: true,
+                });
+            }
+        }
+
+        // Fetch the complete todo with assignees
+        const completeTodo = await prisma.todo.findUnique({
+            where: { id: todo.id },
             include: {
-                assignee: {
-                    select: { id: true, name: true, email: true },
+                assignees: {
+                    include: {
+                        user: {
+                            select: { id: true, name: true, email: true },
+                        },
+                        employee: {
+                            select: { id: true, name: true, email: true },
+                        },
+                    },
                 },
                 createdBy: {
                     select: { id: true, name: true },
@@ -79,7 +121,7 @@ export async function POST(request) {
             },
         });
 
-        return successResponse({ todo }, 201);
+        return successResponse({ todo: completeTodo }, 201);
     } catch (error) {
         return handleApiError(error);
     }
